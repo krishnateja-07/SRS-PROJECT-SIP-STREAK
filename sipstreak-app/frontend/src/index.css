@@ -1,0 +1,141 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+html {
+  scroll-behavior: smooth;
+}
+body {
+  @apply bg-abyss font-sans text-slate-100 antialiased;
+  overflow-x: clip;
+}
+h1, h2, h3, h4 {
+  @apply font-display;
+  text-wrap: balance;
+}
+* {
+  min-width: 0;
+}
+
+@layer components {
+  .glass {
+    @apply relative rounded-3xl border border-cyan-300/15 bg-gradient-to-br from-sky-400/[0.09] via-white/[0.03] to-transparent backdrop-blur-xl;
+    box-shadow: 0 30px 60px -25px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 0 0 1px rgba(0, 229, 255, 0.03);
+  }
+  .glass-hover {
+    @apply transition-shadow duration-300 hover:shadow-glow;
+  }
+  .btn {
+    @apply relative inline-flex min-h-[44px] items-center justify-center gap-2 rounded-2xl px-5 py-2.5 font-display font-semibold tracking-wide transition active:translate-y-[3px] disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-gradient-to-b from-cyan-300 to-cyan-500 text-abyss;
+    box-shadow: 0 5px 0 #0089a8, 0 16px 30px -10px rgba(0, 229, 255, 0.7);
+  }
+  .btn-primary:active {
+    box-shadow: 0 2px 0 #0089a8, 0 8px 16px -10px rgba(0, 229, 255, 0.7);
+  }
+  .btn-neon {
+    @apply btn bg-gradient-to-b from-emerald-300 to-neon text-abyss;
+    box-shadow: 0 5px 0 #13a356, 0 16px 30px -10px rgba(57, 255, 136, 0.65);
+  }
+  .btn-coral {
+    @apply btn bg-gradient-to-b from-orange-300 to-coral text-abyss;
+    box-shadow: 0 5px 0 #b4402f, 0 16px 30px -10px rgba(255, 122, 89, 0.6);
+  }
+  .btn-ghost {
+    @apply btn border border-cyan-300/25 bg-cyan-300/[0.06] text-cyan-100 hover:bg-cyan-300/[0.12];
+    box-shadow: 0 4px 0 rgba(0, 120, 150, 0.45);
+  }
+  .input {
+    @apply min-h-[44px] w-full rounded-xl border border-cyan-300/20 bg-abyss/70 px-3.5 py-2.5 text-base text-white placeholder:text-slate-500 focus:border-cyan-300/70 focus:outline-none focus:ring-2 focus:ring-cyan-300/30;
+  }
+  .label {
+    @apply mb-1.5 block text-sm font-medium text-slate-400;
+  }
+  .text-gradient {
+    @apply bg-gradient-to-r from-cyan-200 via-aqua to-neon bg-clip-text text-transparent;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2.5 py-1 text-xs font-semibold text-cyan-100;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid #39ff88;
+  outline-offset: 3px;
+}
+
+/* lightweight SVG wave: translate keyframes, no per-frame JS */
+@keyframes wave-x {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.wave-x { animation: wave-x 6s linear infinite; }
+.wave-x-slow { animation: wave-x 10s linear infinite; }
+
+@keyframes rise {
+  0% { transform: translate3d(0, 0, 0) scale(0.6); opacity: 0; }
+  10% { opacity: 0.7; }
+  100% { transform: translate3d(var(--dx, 0), -110vh, 0) scale(1.1); opacity: 0; }
+}
+.bubble {
+  position: absolute;
+  bottom: -40px;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.55), rgba(0, 229, 255, 0.15) 45%, rgba(0, 229, 255, 0.04) 70%);
+  border: 1px solid rgba(160, 250, 255, 0.25);
+  animation: rise linear infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+.liquid-bg {
+  background: linear-gradient(110deg, #030b1a, #06183a 30%, #052a45 50%, #06183a 70%, #030b1a);
+  background-size: 200% 100%;
+  animation: shimmer 18s linear infinite;
+}
+
+.leaflet-container {
+  background: #041328 !important;
+  font-family: Inter, sans-serif;
+  border-radius: 1.25rem;
+}
+.leaflet-popup-content-wrapper, .leaflet-popup-tip {
+  background: #0a2350 !important;
+  color: #e6fbff !important;
+  border: 1px solid rgba(0, 229, 255, 0.3);
+}
+.leaflet-control-zoom a {
+  background: #0a2350 !important;
+  color: #9ff3ff !important;
+  border-color: rgba(0, 229, 255, 0.3) !important;
+}
+.pin {
+  width: 30px; height: 30px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg);
+  display: grid; place-items: center; border: 2px solid rgba(255,255,255,.8);
+}
+.pin.ok { background: linear-gradient(135deg, #39ff88, #00c2a8); box-shadow: 0 0 18px rgba(57,255,136,.8); }
+.pin.no { background: linear-gradient(135deg, #94a3b8, #475569); }
+.pin span { transform: rotate(45deg); font: 700 12px Outfit, sans-serif; color: #03121f; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
+
+@media print {
+  body * { visibility: hidden; }
+  .print-area, .print-area * { visibility: visible; }
+  .print-area { position: absolute; left: 0; top: 0; }
+}
+
+@keyframes ring-spin {
+  to { transform: rotate(360deg); }
+}
+.ring-spin { animation: ring-spin 26s linear infinite; }
+.ring-spin-rev { animation: ring-spin 38s linear infinite reverse; }

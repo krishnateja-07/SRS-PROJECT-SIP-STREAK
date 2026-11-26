@@ -1,0 +1,274 @@
+openapi: 3.1.0
+info:
+  title: SipStreak API
+  version: 1.0.0
+  summary: Accounts, squads and drink logs for SipStreak: HydroHero Hunt.
+  description: |
+    One Vercel Function (`api/[...path].js`) backed by a private Vercel Blob store.
+    All bodies are JSON. Every response carries `Cache-Control: no-store`.
+
+    **Authentication.** `signup` and `login` return a signed session token (30 days). Send it as
+    `Authorization: Bearer <token>`. Tokens are HMAC-SHA256 signed; a tampered, expired or foreign token is treated as anonymous.
+
+    **Privacy.** Other people's `weightKg` and `email` are never returned; for them the API returns `weightKg: 0`,
+    `email: ""` and their daily goal in `customTargetMl`. Password hashes are never returned.
+
+    **Concurrency.** Writes use ETag preconditions with up to 5 retries, so simultaneous updates (for example two people
+    creating squads at once) are all applied.
+
+    **Observability.** Each request writes one structured JSON log line (`event: "request"`) with `requestId`, `route`,
+    `status`, `ms`, `storageCalls`, `storageMs` and `retries`; see the README for the other events.
+servers:
+  - url: https://sipstreak-hydrohero-hunt.vercel.app
+    description: Production
+  - url: http://localhost:4000
+    description: Local (`node server/dev.mjs`)
+paths:
+  /api/health:
+    get:
+      operationId: health
+      summary: Liveness and storage latency
+      responses:
+        '200':
+          description: The API is up and storage answered.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, storage, storageLatencyMs]
+                properties:
+                  ok: { type: boolean, const: true }
+                  storage: { type: string, enum: [postgres, blob, fs], description: '`postgres` when DATABASE_URL is set, `blob` on Vercel Blob, `fs` in local development.' }
+                  storageLatencyMs: { type: integer, minimum: 0, description: Time for one storage listing call. }
+        '503':
+          description: Storage did not answer.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /api/state:
+    get:
+      operationId: getState
+      summary: Everyone's public state, plus the caller's own full record when signed in
+      description: |
+        Other users' logs are limited to the last 31 days; the caller's own logs are complete.
+        Works without a token (landing-page statistics); `me` is then `null`.
+      security: [{}, { bearerAuth: [] }]
+      responses:
+        '200':
+          description: Current state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/State' }
+  /api/signup:
+    post:
+      operationId: signup
+      summary: Create an account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password, weightKg]
+              properties:
+                name: { type: string, minLength: 2, maxLength: 40 }
+                email: { type: string, format: email, maxLength: 120 }
+                password: { type: string, minLength: 6, maxLength: 200 }
+                weightKg: { type: number, minimum: 25, maximum: 250 }
+                timezone: { type: string, description: IANA timezone such as `Asia/Kolkata`; invalid values become `UTC`. }
+      responses:
+        '200':
+          description: Account created and signed in.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthReply' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409':
+          description: An account with this email already exists.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /api/login:
+    post:
+      operationId: login
+      summary: Sign in
+      description: Unknown accounts and wrong passwords return the same `401` message.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string }
+                password: { type: string }
+      responses:
+        '200':
+          description: Signed in.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthReply' }
+        '401':
+          description: Email or password is incorrect.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /api/sync:
+    post:
+      operationId: sync
+      summary: Push the caller's changes (profile, settings, drink logs, a new squad, sticker scans)
+      description: |
+        Send only what changed. Every field is optional and validated server-side; invalid log entries are skipped.
+        A squad change is applied only if the squad exists, is not a sample squad, and has fewer than 8 members; otherwise the
+        response includes `rejected.squad` with the reason and the profile's `squadId` is left unchanged.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SyncRequest' }
+      responses:
+        '200':
+          description: Applied. Returns the fresh state.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, state]
+                properties:
+                  ok: { type: boolean, const: true }
+                  rejected:
+                    type: object
+                    properties:
+                      squad: { type: string, description: Why the squad change was not applied. }
+                  state: { $ref: '#/components/schemas/RemoteState' }
+        '401':
+          description: Missing, expired or invalid token.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Session token from `signup` or `login`.
+  responses:
+    BadRequest:
+      description: Validation failed or the body was not valid JSON.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Error:
+      type: object
+      required: [ok, error]
+      properties:
+        ok: { type: boolean, const: false }
+        error: { type: string }
+    User:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        email: { type: string, description: Empty for other users. }
+        weightKg: { type: number, description: 0 for other users. }
+        mlPerKg: { type: number }
+        customTargetMl: { type: [number, 'null'], description: For other users, their computed daily goal. }
+        timezone: { type: string }
+        squadId: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+    HydrationLog:
+      type: object
+      required: [id, ml, kind, at, source]
+      properties:
+        id: { type: string, pattern: '^[A-Za-z0-9_-]{3,40}$' }
+        userId: { type: string, description: Always set by the server from the token. }
+        ml: { type: integer, minimum: 1, maximum: 2000 }
+        kind: { type: string, enum: [water, coffee, energy] }
+        at: { type: string, format: date-time, description: UTC timestamp. }
+        source: { type: string, enum: [tap, custom, qr, sim] }
+    Settings:
+      type: object
+      properties:
+        nudgesOn: { type: boolean }
+        nudgeStart: { type: string, pattern: '^\d\d:\d\d$' }
+        nudgeEnd: { type: string, pattern: '^\d\d:\d\d$' }
+        nudgeEveryMin: { type: number, minimum: 5, maximum: 480 }
+        fastDemo: { type: boolean }
+        caffeineOn: { type: boolean }
+        caffeineBonusMl: { type: number, minimum: 0, maximum: 500 }
+        teamStreakThreshold: { type: number, minimum: 50, maximum: 100 }
+        liveSim: { type: boolean }
+    Squad:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string, minLength: 3, maxLength: 32 }
+        code: { type: string, pattern: '^[A-Z0-9]{6}$', description: Invite code. }
+        hue: { type: integer, minimum: 0, maximum: 359 }
+        createdBy: { type: string }
+        createdAt: { type: string, format: date-time }
+    RemoteState:
+      type: object
+      properties:
+        users: { type: array, items: { $ref: '#/components/schemas/User' } }
+        logs: { type: array, items: { $ref: '#/components/schemas/HydrationLog' } }
+        settings: { type: object, additionalProperties: { $ref: '#/components/schemas/Settings' } }
+        squads: { type: array, items: { $ref: '#/components/schemas/Squad' } }
+        qrScans: { type: object, additionalProperties: { type: string, format: date-time } }
+        serverTime: { type: string, format: date-time }
+    State:
+      allOf:
+        - { $ref: '#/components/schemas/RemoteState' }
+        - type: object
+          properties:
+            ok: { type: boolean, const: true }
+            me: { type: [string, 'null'], description: The signed-in user's id, or null. }
+    AuthReply:
+      type: object
+      required: [ok, token, user, state]
+      properties:
+        ok: { type: boolean, const: true }
+        token: { type: string }
+        user: { $ref: '#/components/schemas/User' }
+        state: { $ref: '#/components/schemas/RemoteState' }
+    SyncRequest:
+      type: object
+      properties:
+        profile:
+          type: object
+          properties:
+            name: { type: string }
+            weightKg: { type: number, minimum: 25, maximum: 250 }
+            mlPerKg: { type: number, minimum: 20, maximum: 50 }
+            customTargetMl: { type: [number, 'null'], minimum: 500, maximum: 6000 }
+            timezone: { type: string }
+            squadId: { type: [string, 'null'] }
+        settings: { oneOf: [{ $ref: '#/components/schemas/Settings' }, { type: 'null' }] }
+        logs:
+          type: object
+          properties:
+            add: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/HydrationLog' } }
+            remove: { type: array, maxItems: 500, items: { type: string } }
+            update:
+              type: array
+              maxItems: 500
+              items:
+                type: object
+                properties:
+                  id: { type: string }
+                  ml: { type: integer, minimum: 1, maximum: 2000 }
+        qr:
+          type: object
+          description: Sticker id to scan time; keeps a sticker from logging twice.
+          additionalProperties: { type: string, format: date-time }
+        createSquad:
+          type: object
+          required: [id, name, code]
+          properties:
+            id: { type: string }
+            name: { type: string }
+            code: { type: string }
+            hue: { type: integer }
